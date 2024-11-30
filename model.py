@@ -1,17 +1,11 @@
-# --start-- This fixes a streamlit cloud sqlite issue
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-# --end-- hopefully
-import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Annotated
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from dotenv import load_dotenv
+from typing import TypedDict, Annotated
 import os
 
 # Load environment variables
@@ -21,8 +15,7 @@ load_dotenv()
 openai_api_key = os.getenv("OPEN_API_KEY")
 
 if not openai_api_key:
-    st.error("API key is not set. Please set the OPENAI_API_KEY environment variable.")
-    st.stop()
+    raise ValueError("API key is not set. Please set the OPENAI_API_KEY environment variable.")
 
 # Initialize ChromaDB and retriever
 embeddings = SentenceTransformerEmbeddings(model_name='paraphrase-MiniLM-L6-v2')
@@ -57,7 +50,6 @@ Instructions:
 9. Encourage further study by suggesting related verses, chapters, or scriptures for a broader understanding of the topic.
 10. Always end with encouragement and inspiration for the devotee to continue their spiritual journey with faith and determination.
 
-
 My dear devotee, let me explain this point according to the Bhagavad Gita's teachings:
 """
 
@@ -65,6 +57,7 @@ rag_prompt = PromptTemplate(
     template=template,
     input_variables=["context", "chat_history", "question"]
 )
+
 def format_docs(docs):
     return "\n\n".join(f"Chapter {doc.metadata.get('chapter', 'N/A')}, Verse {doc.metadata.get('verse', 'N/A')}: {doc.page_content}" for doc in docs)
 
@@ -132,69 +125,3 @@ graph.add_edge("generator", END)
 
 # Compile the graph
 app = graph.compile()
-
-
-# Sidebar for conversation management
-with st.sidebar:
-    st.header("Conversations")
-    
-    # Button to start a new conversation
-    if st.button("New Conversation"):
-        st.session_state.conversation_id = len(st.session_state.get("conversations", []))
-        st.session_state.state = {
-            "messages": [],
-            "context": "",
-            "question": ""
-        }
-        st.rerun()
-
-    # Display existing conversations
-    if "conversations" not in st.session_state:
-        st.session_state.conversations = []
-
-    for i, conv in enumerate(st.session_state.conversations):
-        if st.button(f"Conversation {i + 1}", key=f"conv_{i}"):
-            st.session_state.conversation_id = i
-            st.session_state.state = conv
-            st.rerun()
-
-# Initialize conversation state if not exists
-if "conversation_id" not in st.session_state:
-    st.session_state.conversation_id = 0
-
-if "state" not in st.session_state:
-    st.session_state.state = {
-        "messages": [],
-        "context": "",
-        "question": ""
-    }
-
-# Display current conversation
-st.title(f"Bhagavad Gita RAG Chatbot - Conversation {st.session_state.conversation_id + 1}")
-
-for message in st.session_state.state["messages"]:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Ask your question about the Bhagavad Gita:"):
-    st.session_state.state["messages"].append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        stream_container = st.empty()
-        with stream_container:
-            callback = StreamlitCallbackHandler(stream_container)
-
-            new_state = app.invoke(
-                st.session_state.state,
-                {"callbacks": [callback]}
-            )
-
-    st.session_state.state = new_state
-
-    # Update conversations list
-    if len(st.session_state.conversations) <= st.session_state.conversation_id:
-        st.session_state.conversations.append(st.session_state.state)
-    else:
-        st.session_state.conversations[st.session_state.conversation_id] = st.session_state.state
